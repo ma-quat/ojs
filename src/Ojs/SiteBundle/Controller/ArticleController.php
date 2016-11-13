@@ -238,4 +238,77 @@ class ArticleController extends Controller
 
         return $this->render('OjsSiteBundle::Article/journal_articles.html.twig', $data);
     }
+
+    public function articleExportAction($type, $article_id)
+    {
+        $em = $this->getDoctrine()->getManager();
+        $article = $em->getRepository('OjsJournalBundle:Article')->find($article_id);
+        $this->throw404IfNotFound($article);
+
+        $journal = $article->getJournal();
+
+        if($journal->getStatus() !== JournalStatuses::STATUS_PUBLISHED || $journal->getPublisher()->getStatus() !== PublisherStatuses::STATUS_COMPLETE ){
+            $journal = null;
+            $this->throw404IfNotFound($journal);
+        }
+
+        if($article->getStatus() == ArticleStatuses::STATUS_EARLY_PREVIEW){
+            $journalService = $this->get('ojs.journal_service');
+            $data['article'] = $article;
+            //log article view event
+
+
+            $createGetterFunction = 'get' . ucfirst('title');
+
+            $fieldTranslations = [];
+            foreach ($data['article']->getTranslations() as $langCode => $translation) {
+                if (!empty($translation->$createGetterFunction()) && $translation->$createGetterFunction() != '-') {
+                    $fieldTranslations[$langCode] = $translation->$createGetterFunction();
+
+
+                    $addarray = array();
+                    $addarray['entryType'] = $data['article']->getArticleType();
+                    $addarray['journal'] = $data['article']->getJournal()->getTitle();
+                    $addarray['issn'] = $data['article']->getJournal()->getIssn();
+                    $addarray['address'] = $data['article']->getJournal()->getAddress();
+                    $addarray['address'] = $data['article']->getJournal()->getPublisher()->getName();
+                    $addarray['year'] = $data['article']->getJournal()->getFounded()->format('Y');
+                    $addarray['pages'] = $data['article']->getFirstPage() . ' - ' . $data['article']->getLastPage();
+                    $addarray['doi'] = $data['article']->getDoi();
+                    $addarray['title'] = $translation->$createGetterFunction();
+                    $addarray['language'] = $langCode;
+                    $addarray['cite'] = $data['article']->getJournal()->getSlug() . $data['article']->getId();
+                    $addarray['key'] = 'cite';
+                    foreach ($data['article']->getArticleAuthors() as $author) {
+                        $addarray['author'][$author->getAuthorOrder()]['first'] = $author->getAuthor()->getFirstName();
+                        $addarray['author'][$author->getAuthorOrder()]['last'] = $author->getAuthor()->getLastName();
+                        //$addarray['author'][]['jr'] = $author->getAuthor()->getMiddleName();
+
+                    }
+                    arsort($addarray['author']);
+
+
+                }
+            }
+
+            $data['articleArray'] = $addarray;
+            $data['journal'] = $data['article']->getJournal();
+            $data['page'] = 'journals';
+            $data['journal']->setPublicURI($journalService->generateUrl($data['journal']));
+
+
+            # return $this->render('OjsSiteBundle:Article:article_page.html.twig', $data);
+        }
+
+        if($article->getStatus() !== 1 || !$article->getIssue()) {
+            $article = null;
+            $this->throw404IfNotFound($article);
+        }
+        $routeParams = array(
+            'article_id' => $article->getId(),
+            'slug' => $article->getJournal()->getSlug(),
+            'issue_id' => $article->getIssue()->getId()
+        );
+        # return $this->redirectToRoute('ojs_article_page', $routeParams);
+    }
 }
